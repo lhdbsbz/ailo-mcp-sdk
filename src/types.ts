@@ -53,25 +53,13 @@ export interface BridgeHandler {
 }
 
 /**
- * channel.accept 的 contextTags 项
- *
- * key:  框架内部路由用（英文标识）
- * desc: 给 LLM 看的人类可读标签（中文）
- * value: 标签值
+ * channel.accept 的 contextTags 项：desc+value+core，全中文。
  */
-export type ContextTag = { key: string; desc: string; value: string };
+export type ContextTag = { desc: string; value: string; core: boolean };
 
-/**
- * channel.accept 的消息参数
- *
- * coreForSenseContext: 与 contextTags 一一对应，true 表示该标签参与时空场键生成。
- * 最左匹配：遇 false 即停。私聊全 true；群聊 chat_type/chat_id/chat_name 为 true，sender_name 起为 false。
- * 未传时框架回退 Channel+ChatID。
- */
 export type ChannelAcceptParams = {
   chatId: string;
   text: string;
   contextTags: ContextTag[];
-  coreForSenseContext?: boolean[];
   attachments?: Attachment[];
 };

@@ -127,16 +127,12 @@ export class AiloClient {
   }
 
   sendMessage(params: ChannelAcceptParams): Promise<{ text?: string }> {
-    const payload: Record<string, unknown> = {
+    return this.request<{ text?: string }>("channel.accept", {
       chatId: params.chatId,
       text: params.text,
       contextTags: params.contextTags,
       attachments: params.attachments ?? [],
-    };
-    if (params.coreForSenseContext != null && params.coreForSenseContext.length > 0) {
-      payload.coreForSenseContext = params.coreForSenseContext;
-    }
-    return this.request<{ text?: string }>("channel.accept", payload);
+    });
   }
 
   /** 简单 KV，数据存 AILO 本体，自动持久化 */

@@ -38,7 +38,7 @@ export function defaultBuildChannelPrompt(): string {
  * stdout 被 MCP stdio 占用，日志自动重定向到 stderr。
  */
 export function runMcp(mcpServer: McpServer): void {
-  console.log = (...args: unknown[]) => console.error(...args);
+  // stdio-guard 需在入口 import，runMcp 使用者应 import 自 @lmcl/ailo-mcp-sdk
   const transport = new StdioServerTransport();
   mcpServer.connect(transport).then(() => {
     console.log("[mcp] MCP stdio server started");
@@ -52,7 +52,7 @@ export function runMcp(mcpServer: McpServer): void {
  * 启动 MCP 通道
  *
  * 通用流程：
- *   1. 重定向 console.log 到 stderr（stdout 被 MCP stdio 占用）
+ *   1. stdio-guard 已在 index 入口加载，console.log 等自动重定向到 stderr
  *   2. 启动 MCP stdio server（暴露出站工具）
  *   3. 建立反向 WebSocket 连接（connect 时传入 channel + prompt，一步完成注册）
  *   4. 接线入站：handler.setOnMessage → 组装 contextTags → channel.accept
@@ -76,10 +76,7 @@ export function runMcpChannel(config: McpChannelConfig): void {
     process.exit(1);
   }
 
-  // stdout 被 MCP stdio 占用，日志全部走 stderr
-  const _origLog = console.log;
-  console.log = (...args: unknown[]) => console.error(...args);
-
+  // stdio-guard 已在 index 入口加载，console.log 等已重定向到 stderr
   const tag = `[${channelName}]`;
 
   const channelPrompt = config.buildChannelPrompt
@@ -108,19 +105,19 @@ export function runMcpChannel(config: McpChannelConfig): void {
         !isPrivate &&
         (msg.chatName || (msg.chatId ? `群${msg.chatId.slice(-8)}` : ""));
 
-      const contextTags: { key: string; desc: string; value: string }[] = [
-        { key: "chat_type", desc: "类型", value: msg.chatType },
-        { key: "chat_id", desc: "会话", value: msg.chatId },
+      const tags: { desc: string; value: string; core: boolean }[] = [
+        { desc: "类型", value: msg.chatType, core: true },
+        { desc: "会话", value: msg.chatId, core: true },
       ];
       if (groupLabel) {
-        contextTags.push({ key: "chat_name", desc: "群名", value: groupLabel });
+        tags.push({ desc: "群名", value: groupLabel, core: true });
       }
-      contextTags.push(
-        { key: "sender_name", desc: "昵称", value: msg.senderName ?? "" },
-        { key: "sender_id", desc: "用户ID", value: msg.senderId ?? "" }
+      tags.push(
+        { desc: "昵称", value: msg.senderName ?? "", core: isPrivate },
+        { desc: "用户", value: msg.senderId ?? "", core: isPrivate }
       );
       if (msg.mentionsSelf) {
-        contextTags.push({ key: "mentions_self", desc: "提及自己", value: "true" });
+        tags.push({ desc: "@我", value: "是", core: isPrivate });
       }
 
       if (msg.timestamp != null) {
@@ -133,25 +130,18 @@ export function runMcpChannel(config: McpChannelConfig): void {
         if (!isNaN(tsMs) && tsMs > 0) {
           const d = new Date(tsMs);
           const pad = (n: number) => String(n).padStart(2, "0");
-          const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-          contextTags.push({ key: "sent_at", desc: "发送时间", value: formatted });
+          tags.push({
+            desc: "时间",
+            value: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
+            core: false,
+          });
         }
-      }
-
-      const coreForSenseContext: boolean[] = [];
-      coreForSenseContext.push(true, true);
-      if (groupLabel) {
-        coreForSenseContext.push(true);
-      }
-      for (let i = coreForSenseContext.length; i < contextTags.length; i++) {
-        coreForSenseContext.push(isPrivate);
       }
 
       await client.sendMessage({
         chatId: msg.chatId,
         text: msg.text ?? "",
-        contextTags,
-        coreForSenseContext,
+        contextTags: tags,
         attachments: msg.attachments ?? [],
       });
     } catch (err) {
@@ -185,7 +175,12 @@ export function runMcpChannel(config: McpChannelConfig): void {
       process.exit(1);
     }
 
-    // 3. 启动平台 Handler
+    // 3. 注入持久化存储
+    if (handler.setDataProvider) {
+      handler.setDataProvider(client);
+    }
+
+    // 4. 启动平台 Handler
     console.log(`${tag} starting handler...`);
     const startResult = handler.start();
 

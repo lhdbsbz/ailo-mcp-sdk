@@ -10,6 +10,22 @@ npm install @lmcl/ailo-mcp-sdk
 
 ---
 
+## 日志与 stdout（重要）
+
+MCP 使用 stdio 传输，**stdout 只能输出 JSON-RPC 消息**，任何 `console.log`、第三方库日志等都会破坏协议，导致 `invalid character 'i' looking for beginning of value` 等解析错误。
+
+**本 SDK 在框架层已做保护**：自动拦截 stdout，仅 JSON-RPC 转发到 stdout，其余重定向到 stderr。你可以自由使用 `console.log`、`console.info`、`console.debug`，以及接入会打日志的第三方库（如飞书 SDK），无需额外处理。
+
+**入口顺序**：请将 `import { runMcpChannel } from "@lmcl/ailo-mcp-sdk"` 作为入口文件的**首个 import**，确保保护在 dotenv、平台 SDK 等之前生效。若入口结构复杂，可显式第一行写：
+
+```typescript
+import "@lmcl/ailo-mcp-sdk/stdio-guard";
+import "dotenv/config";
+import { runMcpChannel } from "@lmcl/ailo-mcp-sdk";
+```
+
+---
+
 ## 场景1：纯工具（AILO → MCP 客户端）
 
 AILO 调用你的工具，你返回结果。
