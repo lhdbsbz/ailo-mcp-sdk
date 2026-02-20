@@ -16,10 +16,8 @@ type Frame = {
 /**
  * 反向 WebSocket 信号客户端。
  *
- * 连接 Ailo 网关，负责：
- *   - channel.register（注册通道提示词）
- *   - channel.accept（入站信号投递）
- *   - channel.data.*（持久化数据读写）
+ * 连接 Ailo 网关，connect 时一并传入 channel 与 prompt，一步完成注册。
+ * 负责 channel.accept（入站信号投递）。
  *
  * 出站（AI → 平台）由 MCP stdio 工具处理，不经过此客户端。
  */
@@ -79,6 +77,7 @@ export class AiloClient {
                 role: "channel",
                 token: this.token,
                 channel: this.channel,
+                prompt: this.channelPrompt,
                 capabilities: ["text", "media"],
                 direction: "bidirectional",
               },
@@ -98,11 +97,6 @@ export class AiloClient {
               }
             };
             ws.on("message", onMsg);
-          });
-
-          await this.request("channel.register", {
-            channel: this.channel,
-            prompt: this.channelPrompt,
           });
 
           resolve();
@@ -145,10 +139,7 @@ export class AiloClient {
     return this.request<{ text?: string }>("channel.accept", payload);
   }
 
-  // ---------------------------------------------------------------------------
-  // channel.data.* — 通道持久化数据读写（存储于 SQLite channel_data 表）
-  // ---------------------------------------------------------------------------
-
+  /** 简单 KV，数据存 AILO 本体，自动持久化 */
   async getData(key: string): Promise<string | null> {
     const res = await this.request<{ found: boolean; value?: string }>(
       "channel.data.get",
@@ -157,28 +148,12 @@ export class AiloClient {
     return res.found ? (res.value ?? null) : null;
   }
 
-  async getDataByPrefix(prefix: string): Promise<Record<string, string>> {
-    const res = await this.request<{ items: Record<string, string> }>(
-      "channel.data.get",
-      { prefix }
-    );
-    return res.items ?? {};
-  }
-
   async setData(key: string, value: string): Promise<void> {
     await this.request("channel.data.set", { key, value });
   }
 
-  async setDataBatch(items: Record<string, string>): Promise<void> {
-    await this.request("channel.data.set", { items });
-  }
-
   async deleteData(key: string): Promise<void> {
     await this.request("channel.data.delete", { key });
-  }
-
-  async deleteDataByPrefix(prefix: string): Promise<void> {
-    await this.request("channel.data.delete", { prefix });
   }
 
   close(): void {

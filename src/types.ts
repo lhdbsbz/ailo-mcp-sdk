@@ -22,45 +22,34 @@ export type Attachment = {
  */
 export type BridgeMessage = {
   chatId: string;
-  messageId?: string;
+  chatType: string;       // 时空场 chat_type 值，如 "群聊"、"私聊"
+  text?: string;
   senderId?: string;
   senderName?: string;
-  chatType: string;
-  chatName?: string;
-  text?: string;
+  chatName?: string;      // 群聊时有值，私聊时无
+  isPrivate?: boolean;    // 私聊为 true，不产生 chat_name
   mentionsSelf?: boolean;
   attachments?: Attachment[];
   timestamp?: number | string;
+  messageId?: string;
+};
+
+/** setDataProvider 接收的对象，SDK 注入，直接用 get/set/delete 即可 */
+type ChannelStorage = {
+  getData(key: string): Promise<string | null>;
+  setData(key: string, value: string): Promise<void>;
+  deleteData(key: string): Promise<void>;
 };
 
 /**
- * 通道持久化数据提供者（由 AiloClient 实现，通过 runMcpChannel 注入）
- */
-export interface DataProvider {
-  getData(key: string): Promise<string | null>;
-  getDataByPrefix(prefix: string): Promise<Record<string, string>>;
-  setData(key: string, value: string): Promise<void>;
-  setDataBatch(items: Record<string, string>): Promise<void>;
-  deleteData(key: string): Promise<void>;
-  deleteDataByPrefix(prefix: string): Promise<void>;
-}
-
-/**
  * 通道 Handler 统一接口
- *
- * 每个通道（Feishu、Email 等）需实现此接口。
- * 入站由 runMcpChannel() 接线到反向 WebSocket（channel.accept）。
- * 出站由通道自行注册 MCP 工具，直接调用 handler 方法。
  */
 export interface BridgeHandler {
-  /** 注册入站消息回调 */
   setOnMessage(handler: (msg: BridgeMessage) => void | Promise<void>): void;
-  /** 启动平台连接（WebSocket 长连接 / long polling 等） */
   start(): void | Promise<void>;
-  /** 停止平台连接（可选） */
   stop?(): void;
-  /** 注入持久化数据提供者（可选，由 runMcpChannel 在连接后自动调用） */
-  setDataProvider?(provider: DataProvider): void;
+  /** 可选，SDK 连接后注入带 get/set/delete 的对象，直接用 */
+  setDataProvider?(storage: ChannelStorage): void;
 }
 
 /**

@@ -1,7 +1,7 @@
 {
-  "name": "@ailo/mcp-sdk",
-  "version": "0.2.0",
-  "description": "Ailo MCP SDK - 通道通过 MCP 注册发送消息能力，用于开发飞书、邮件等感知通道",
+  "name": "@lmcl/ailo-mcp-sdk",
+  "version": "0.0.1",
+  "description": "Ailo MCP SDK - 通道通过 MCP 注册发送消息能力，用于开发感知通道",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ailo/ailo-mcp-sdk.git"
+    "url": "https://github.com/lmcl/ailo-mcp-sdk.git"
   },
   "keywords": [
     "ailo",

@@ -1,5 +1,5 @@
 export { AiloClient } from "./ailo-client.js";
-export { runMcpChannel, defaultBuildChannelPrompt } from "./bootstrap.js";
+export { runMcp, runMcpChannel, defaultBuildChannelPrompt } from "./bootstrap.js";
 export type { McpChannelConfig } from "./bootstrap.js";
 export type {
   Attachment,
@@ -7,5 +7,4 @@ export type {
   BridgeMessage,
   ChannelAcceptParams,
   ContextTag,
-  DataProvider,
 } from "./types.js";
