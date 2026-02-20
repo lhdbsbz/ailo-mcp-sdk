@@ -6,21 +6,25 @@ import type { BridgeHandler, BridgeMessage } from "./types.js";
 /**
  * MCP 通道启动配置
  *
- * AIDO_WS_URL、AIDO_TOKEN、AIDO_MCP_NAME 由主程序在拉起 MCP 时注入，SDK 自动读取。
+ * AILO_WS_URL、AILO_TOKEN、AILO_MCP_NAME 由主程序在拉起 MCP 时注入，SDK 自动读取。
  * 通道开发者只需提供 handler、mcpServer、buildChannelPrompt 等业务配置。
  */
 export interface McpChannelConfig {
-  /** MCP 名称（如 channel:feishu），connect 时与 token 一起发送供服务端校验。不传则从 AIDO_MCP_NAME / AILO_MCP_NAME 读取 */
+  /** MCP 名称（如 channel:feishu），connect 时与 token 一起发送供服务端校验。不传则从 AILO_MCP_NAME 读取 */
   channelName?: string;
+  /** 中文通道显示名（如 "飞书"），握手时锁定，框架自动注入 TagChannel */
+  displayName: string;
+  /** 通道默认行为：true=主动信号（触发 LLM 处理），false=被动感知（仅记录）。默认 true */
+  defaultRequiresResponse?: boolean;
   /** 平台 Handler 实例（需实现 BridgeHandler 接口） */
   handler: BridgeHandler;
-  /** Ailo WebSocket 网关地址。不传则从 AIDO_WS_URL / AILO_WS_URL 读取 */
+  /** Ailo WebSocket 网关地址。不传则从 AILO_WS_URL 读取 */
   ailoWsUrl?: string;
-  /** Ailo 网关认证 Token。不传则从 AIDO_TOKEN / AILO_TOKEN 读取 */
+  /** Ailo 网关认证 Token。不传则从 AILO_TOKEN 读取 */
   ailoToken?: string;
   /**
    * 构建通道静态提示词（connect 时注册）。
-   * 连接时调用一次，注册该通道的特殊规则。
+   * 逐步废弃：通道指令应迁移到 MCP 工具定义（tool schema description）中。
    */
   buildChannelPrompt?: () => string;
   /** 预配置的 MCP Server 实例（已注册好工具） */
@@ -59,19 +63,15 @@ export function runMcp(mcpServer: McpServer): void {
  *   5. 启动平台 Handler
  *   6. 注册 SIGINT / SIGTERM 优雅退出
  */
-function envOr(name: string, fallback: string): string {
-  return process.env[name] ?? process.env[fallback] ?? "";
-}
-
 export function runMcpChannel(config: McpChannelConfig): void {
   const { handler, mcpServer } = config;
-  const channelName = config.channelName ?? envOr("AIDO_MCP_NAME", "AILO_MCP_NAME");
-  const ailoWsUrl = config.ailoWsUrl ?? envOr("AIDO_WS_URL", "AILO_WS_URL");
-  const ailoToken = config.ailoToken ?? envOr("AIDO_TOKEN", "AILO_TOKEN");
+  const channelName = config.channelName ?? process.env.AILO_MCP_NAME ?? "";
+  const ailoWsUrl = config.ailoWsUrl ?? process.env.AILO_WS_URL ?? "";
+  const ailoToken = config.ailoToken ?? process.env.AILO_TOKEN ?? "";
 
   if (!ailoWsUrl || !ailoToken || !channelName) {
     console.error(
-      "Missing AIDO_WS_URL/AILO_WS_URL, AIDO_TOKEN/AILO_TOKEN or AIDO_MCP_NAME/AILO_MCP_NAME. Channel must be started by Ailo MCP."
+      "Missing AILO_WS_URL, AILO_TOKEN or AILO_MCP_NAME. Channel must be started by Ailo MCP."
     );
     process.exit(1);
   }
@@ -83,67 +83,22 @@ export function runMcpChannel(config: McpChannelConfig): void {
     ? config.buildChannelPrompt()
     : defaultBuildChannelPrompt();
 
-  const client = new AiloClient(ailoWsUrl, ailoToken, channelName, channelPrompt);
+  const displayName = config.displayName;
+  const defaultRequiresResponse = config.defaultRequiresResponse ?? true;
 
-  // 入站：平台 → Ailo（channel.accept）
+  const client = new AiloClient(ailoWsUrl, ailoToken, channelName, displayName, defaultRequiresResponse, channelPrompt);
+
+  // 入站：平台 → Ailo（channel.accept），msg 必须自带 contextTags 或内容
+  // 注意：被动感知信号（requiresResponse=false）允许无 text/attachments，只需有 contextTags
   handler.setOnMessage(async (msg: BridgeMessage) => {
-    const hasContent = (msg.text ?? "").trim() !== "" || (msg.attachments?.length ?? 0) > 0;
+    const hasContent = (msg.text?.trim() ?? "") !== "" || (msg.attachments?.length ?? 0) > 0 || msg.contextTags.length > 0;
     if (!hasContent) {
-      console.log(
-        `${tag} skipped ${msg.chatType} ${msg.chatId} (no text or attachments)`
-      );
+      console.log(`${tag} skipped (no text, attachments, or contextTags)`);
       return;
     }
-
-    console.log(
-      `${tag} ${msg.chatType} ${msg.chatId} from ${msg.senderName ? msg.senderName + "(" + (msg.senderId ?? "") + ")" : msg.senderId ?? "unknown"}: ${(msg.text ?? "").slice(0, 80)}`
-    );
-
+    console.log(`${tag} ${(msg.text ?? "").slice(0, 80)}`);
     try {
-      const isPrivate = msg.isPrivate ?? false;
-      const groupLabel =
-        !isPrivate &&
-        (msg.chatName || (msg.chatId ? `群${msg.chatId.slice(-8)}` : ""));
-
-      const tags: { desc: string; value: string; core: boolean }[] = [
-        { desc: "类型", value: msg.chatType, core: true },
-        { desc: "会话", value: msg.chatId, core: true },
-      ];
-      if (groupLabel) {
-        tags.push({ desc: "群名", value: groupLabel, core: true });
-      }
-      tags.push(
-        { desc: "昵称", value: msg.senderName ?? "", core: isPrivate },
-        { desc: "用户", value: msg.senderId ?? "", core: isPrivate }
-      );
-      if (msg.mentionsSelf) {
-        tags.push({ desc: "@我", value: "是", core: isPrivate });
-      }
-
-      if (msg.timestamp != null) {
-        let tsMs: number;
-        if (typeof msg.timestamp === "number") {
-          tsMs = msg.timestamp;
-        } else {
-          tsMs = parseInt(msg.timestamp, 10);
-        }
-        if (!isNaN(tsMs) && tsMs > 0) {
-          const d = new Date(tsMs);
-          const pad = (n: number) => String(n).padStart(2, "0");
-          tags.push({
-            desc: "时间",
-            value: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
-            core: false,
-          });
-        }
-      }
-
-      await client.sendMessage({
-        chatId: msg.chatId,
-        text: msg.text ?? "",
-        contextTags: tags,
-        attachments: msg.attachments ?? [],
-      });
+      await client.sendMessage(msg);
     } catch (err) {
       console.error(`${tag} send to Ailo failed:`, err);
     }

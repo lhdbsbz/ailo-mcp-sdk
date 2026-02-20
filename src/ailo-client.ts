@@ -1,5 +1,13 @@
 import WebSocket from "ws";
-import type { ChannelAcceptParams } from "./types.js";
+import type { BridgeMessage, ContextTag } from "./types.js";
+
+/** 按 kind 查找第一个匹配标签的 value */
+export function tagValue(tags: ContextTag[], kind: string): string {
+  for (const t of tags) {
+    if (t.kind === kind) return t.value;
+  }
+  return "";
+}
 
 type Frame = {
   type: string;
@@ -16,7 +24,7 @@ type Frame = {
 /**
  * 反向 WebSocket 信号客户端。
  *
- * 连接 Ailo 网关，connect 时一并传入 channel 与 prompt，一步完成注册。
+ * 连接 Ailo 网关，connect 时传入 channel、displayName、defaultRequiresResponse，一步完成注册。
  * 负责 channel.accept（入站信号投递）。
  *
  * 出站（AI → 平台）由 MCP stdio 工具处理，不经过此客户端。
@@ -26,14 +34,25 @@ export class AiloClient {
   private url: string;
   private token: string;
   private channel: string;
+  private displayName: string;
+  private defaultRequiresResponse: boolean;
   private channelPrompt: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reqId = 0;
 
-  constructor(url: string, token: string, channel: string, channelPrompt = "") {
+  constructor(
+    url: string,
+    token: string,
+    channel: string,
+    displayName: string,
+    defaultRequiresResponse = true,
+    channelPrompt = "",
+  ) {
     this.url = url;
     this.token = token;
     this.channel = channel;
+    this.displayName = displayName;
+    this.defaultRequiresResponse = defaultRequiresResponse;
     this.channelPrompt = channelPrompt;
   }
 
@@ -77,9 +96,9 @@ export class AiloClient {
                 role: "channel",
                 token: this.token,
                 channel: this.channel,
+                displayName: this.displayName,
+                defaultRequiresResponse: this.defaultRequiresResponse,
                 prompt: this.channelPrompt,
-                capabilities: ["text", "media"],
-                direction: "bidirectional",
               },
             })
           );
@@ -126,13 +145,18 @@ export class AiloClient {
     }, 3000);
   }
 
-  sendMessage(params: ChannelAcceptParams): Promise<{ text?: string }> {
-    return this.request<{ text?: string }>("channel.accept", {
-      chatId: params.chatId,
-      text: params.text,
-      contextTags: params.contextTags,
-      attachments: params.attachments ?? [],
-    });
+  sendMessage(msg: BridgeMessage): Promise<{ text?: string }> {
+    const chatId = tagValue(msg.contextTags, "chat_id") || "main";
+    const params: Record<string, unknown> = {
+      chatId,
+      text: msg.text ?? "",
+      contextTags: msg.contextTags,
+      attachments: msg.attachments ?? [],
+    };
+    if (msg.requiresResponse !== undefined) {
+      params.requiresResponse = msg.requiresResponse;
+    }
+    return this.request<{ text?: string }>("channel.accept", params);
   }
 
   /** 简单 KV，数据存 AILO 本体，自动持久化 */

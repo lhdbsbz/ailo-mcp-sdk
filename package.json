@@ -1,6 +1,6 @@
 {
   "name": "@lmcl/ailo-mcp-sdk",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "Ailo MCP SDK - 通道通过 MCP 注册发送消息能力，用于开发感知通道",
   "type": "module",
   "main": "dist/index.js",

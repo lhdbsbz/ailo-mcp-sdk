@@ -16,22 +16,30 @@ export type Attachment = {
 };
 
 /**
+ * 时空场标签。
+ *
+ * kind: 受控词汇（channel/participant/group/conv_type/location/device/modality/chat_id/sender_id）
+ * streamKey: 参与 stream_key 推导（标识事件流归属）
+ * routing: 仅路由用途——不嵌入向量，不展示在历史邮戳
+ */
+export type ContextTag = {
+  kind: string;
+  value: string;
+  streamKey: boolean;
+  routing?: boolean;
+};
+
+/**
  * 桥接器入站消息（平台 → Ailo）
  *
- * 所有平台 Handler 的 onMessage 回调统一使用此类型。
+ * 时空场模型：通道自己定义，全在 contextTags 里。
  */
 export type BridgeMessage = {
-  chatId: string;
-  chatType: string;       // 时空场 chat_type 值，如 "群聊"、"私聊"
   text?: string;
-  senderId?: string;
-  senderName?: string;
-  chatName?: string;      // 群聊时有值，私聊时无
-  isPrivate?: boolean;    // 私聊为 true，不产生 chat_name
-  mentionsSelf?: boolean;
+  contextTags: ContextTag[];
   attachments?: Attachment[];
-  timestamp?: number | string;
-  messageId?: string;
+  /** 本条消息是否需要 LLM 响应（覆盖通道级 defaultRequiresResponse） */
+  requiresResponse?: boolean;
 };
 
 /** setDataProvider 接收的对象，SDK 注入，直接用 get/set/delete 即可 */
@@ -51,15 +59,3 @@ export interface BridgeHandler {
   /** 可选，SDK 连接后注入带 get/set/delete 的对象，直接用 */
   setDataProvider?(storage: ChannelStorage): void;
 }
-
-/**
- * channel.accept 的 contextTags 项：desc+value+core，全中文。
- */
-export type ContextTag = { desc: string; value: string; core: boolean };
-
-export type ChannelAcceptParams = {
-  chatId: string;
-  text: string;
-  contextTags: ContextTag[];
-  attachments?: Attachment[];
-};
