@@ -1,0 +1,42 @@
+{
+  "name": "@ailo/mcp-sdk",
+  "version": "0.2.0",
+  "description": "Ailo MCP SDK - 通道通过 MCP 注册发送消息能力，用于开发飞书、邮件等感知通道",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ailo/ailo-mcp-sdk.git"
+  },
+  "keywords": [
+    "ailo",
+    "mcp",
+    "sdk",
+    "channel",
+    "bridge"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
